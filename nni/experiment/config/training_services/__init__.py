@@ -9,3 +9,4 @@ from .kubeflow import *
 from .frameworkcontroller import *
 from .aml import *
 from .dlc import *
+from .manual import *

@@ -16,6 +16,7 @@ _builtin_training_services = [
     'kubeflow',
     'frameworkcontroller',
     'adl',
+    'manual'
 ]
 
 def register(args):

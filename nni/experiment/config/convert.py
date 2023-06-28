@@ -9,7 +9,7 @@ _logger = logging.getLogger(__name__)
 def to_v2(v1):
     v1 = copy.deepcopy(v1)
     platform = v1.pop('trainingServicePlatform')
-    assert platform in ['local', 'remote', 'pai', 'aml', 'kubeflow', 'frameworkcontroller']
+    assert platform in ['local', 'manual', 'remote', 'pai', 'aml', 'kubeflow', 'frameworkcontroller']
     if platform == 'pai':
         platform = 'openpai'
 
@@ -76,6 +76,14 @@ def to_v2(v1):
         _move_field(local_config, ts, 'useActiveGpu')
         if local_config:
             _logger.error('localConfig not fully converted: %s', local_config)
+
+    if platform == 'manual':
+        manual_config = v1.pop('manualConfig', {})
+        _move_field(manual_config, ts, 'gpuIndices')
+        _move_field(manual_config, ts, 'maxTrialNumPerGpu', 'maxTrialNumberPerGpu')
+        _move_field(manual_config, ts, 'useActiveGpu')
+        if manual_config:
+            _logger.error('manualConfig not fully converted: %s', manual_config)
 
     if platform == 'remote':
         remote_config = v1.pop('remoteConfig', {})
