@@ -37,7 +37,7 @@ class GPUScheduler {
             if (this.gpuSummary !== undefined && this.gpuSummary.gpuCount === 0) {
                 throw new Error('GPU not available. Please check your CUDA configuration');
             }
-            await delay(5000);
+            await delay(1000);
         }
     }
 

@@ -351,11 +351,11 @@ class NNIManager implements Manager {
         this.dispatcher.sendCommand(TERMINATE);
         if (this.dispatcherPid > 0) {
             // gracefully terminate tuner and assessor here, wait at most 30 seconds.
-            for (let i: number = 0; i < 30; i++) {
+            for (let i: number = 0; i < 150; i++) {
                 if (!await isAlive(this.dispatcherPid)) {
                     break;
                 }
-                await delay(1000);
+                await delay(200);
             }
             await killPid(this.dispatcherPid);
         }
@@ -488,7 +488,7 @@ class NNIManager implements Manager {
             const module_ = await import('../training_service/kubernetes/frameworkcontroller/frameworkcontrollerTrainingService');
             return new module_.FrameworkControllerTrainingService();
         } else {
-            this.pollInterval = 0.5;
+            this.pollInterval = 0.05;
             const module_ = await import('../training_service/v3/compat');
             return new module_.V3asV1(config.trainingService as TrainingServiceConfig);
         }
@@ -563,10 +563,10 @@ class NNIManager implements Manager {
     private async periodicallyUpdateExecDuration(): Promise<void> {
         let count: number = 1;
         while (!['ERROR', 'STOPPING', 'STOPPED'].includes(this.status.status)) {
-            await delay(1000 * 1); // 1 seconds
+            await delay(1000 * 0.02); // 1 seconds
             if (['RUNNING', 'NO_MORE_TRIAL', 'TUNER_NO_MORE_TRIAL'].includes(this.status.status)) {
-                this.experimentProfile.execDuration += 1;
-                if (count % 10 === 0) {
+                this.experimentProfile.execDuration += 0.02;
+                if (count % 500 === 0) {
                     await this.storeExperimentProfile();
                 }
             }
@@ -668,6 +668,7 @@ class NNIManager implements Manager {
         let allFinishedTrialJobNum: number = this.currSubmittedTrialNum;
         let waitSubmittedToFinish: number;
         while (!['ERROR', 'STOPPING', 'STOPPED'].includes(this.status.status)) {
+
             await this.stopTrialIfOverMaxDurationLimit();
 
             const finishedTrialJobNum: number = await this.requestTrialJobsStatus();
@@ -695,6 +696,7 @@ class NNIManager implements Manager {
                 this.status.status === 'DONE' ||
                 this.status.status === 'NO_MORE_TRIAL' ||
                 this.status.status === 'TUNER_NO_MORE_TRIAL', `Actual status: ${this.status.status}`);
+            
             if (this.experimentProfile.execDuration > this.maxDuration ||
                 this.currSubmittedTrialNum >= this.maxTrialNum) {
                 if (this.status.status !== 'DONE') {

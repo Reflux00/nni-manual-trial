@@ -12,6 +12,7 @@ from .tuner_command_channel import CommandType, TunerCommandChannel
 
 
 _logger = logging.getLogger(__name__)
+logging.basicConfig(format='%(asctime)s.%(msecs)03d %(levelname)s {%(module)s} [%(funcName)s] %(message)s', datefmt='%Y-%m-%d,%H:%M:%S')
 
 QUEUE_LEN_WARNING_MARK = 20
 _worker_fast_exit_on_terminate = True

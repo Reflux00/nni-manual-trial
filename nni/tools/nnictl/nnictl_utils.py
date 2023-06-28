@@ -193,10 +193,10 @@ def convert_time_stamp_to_date(content):
     start_time_stamp = content.get('startTime')
     end_time_stamp = content.get('endTime')
     if start_time_stamp:
-        start_time = datetime.fromtimestamp(start_time_stamp // 1000, timezone.utc).astimezone().strftime("%Y/%m/%d %H:%M:%S")
+        start_time = datetime.fromtimestamp(start_time_stamp / 1000, timezone.utc).astimezone().strftime("%Y/%m/%d %H:%M:%S.%f")[:-3]
         content['startTime'] = str(start_time)
     if end_time_stamp:
-        end_time = datetime.fromtimestamp(end_time_stamp // 1000, timezone.utc).astimezone().strftime("%Y/%m/%d %H:%M:%S")
+        end_time = datetime.fromtimestamp(end_time_stamp / 1000, timezone.utc).astimezone().strftime("%Y/%m/%d %H:%M:%S.%f")[:-3]
         content['endTime'] = str(end_time)
     return content
 
@@ -622,7 +622,7 @@ def experiment_list(args):
 def get_time_interval(time1, time2):
     '''get the interval of two times'''
     try:
-        seconds = int((time2 - time1) / 1000)
+        seconds = ((time2 - time1) / 1000)
         #convert seconds to day:hour:minute:second
         days = seconds / 86400
         seconds %= 86400

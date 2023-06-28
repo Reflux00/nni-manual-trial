@@ -63,6 +63,7 @@ export class TrialProcess {
      *  When the shell is powershell, the exit code is likely to be 0/1 instead of concrete number.
      **/
     public async spawn(options: TrialProcessOptions): Promise<boolean> {
+        this.log.debug('keep createTrial process spwan start')
         // might change for log collection
         const stdout = fs.createWriteStream(path.join(options.outputDirectory, 'trial.stdout'));
         const stderr = fs.createWriteStream(path.join(options.outputDirectory, 'trial.stderr'));
@@ -90,6 +91,7 @@ export class TrialProcess {
         this.proc.on('close', (code, signal) => { this.resolveStop('close', code, signal); });
 
         await this.started.promise;
+        this.log.debug('keep createTrial process spwan end')
         return Boolean(this.info.startSuccess);
     }
 

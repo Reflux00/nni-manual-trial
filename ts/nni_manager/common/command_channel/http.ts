@@ -42,6 +42,7 @@ export class HttpChannelServer implements CommandChannelServer {
     public async start(): Promise<void> {
         this.serving = true;
         const channelPath = globals.rest.urlJoin(this.path, ':channel');
+        console.trace('http channelPath', channelPath)
         globals.rest.registerSyncHandler('GET', channelPath, this.handleGet.bind(this));
         globals.rest.registerSyncHandler('PUT', channelPath, this.handlePut.bind(this));
     }

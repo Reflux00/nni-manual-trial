@@ -15,6 +15,7 @@ import {
 } from 'common/trainingService';
 import type { EnvironmentInfo, Parameter, TrainingServiceV3 } from 'common/training_service_v3';
 import { trainingServiceFactoryV3 } from './factory';
+import { log } from 'console';
 
 const logger = getLogger('TrainingServiceCompat');
 
@@ -74,7 +75,7 @@ export class V3asV1 implements TrainingService {
 
     public async submitTrialJob(form: TrialJobApplicationForm): Promise<TrialJobDetail> {
         await this.startDeferred.promise;
-        logger.trace('submitTrialJob', form);
+        console.trace('submitTrialJob', form);
 
         let trialId: string | null = null;
         let envId: string | null = null;
@@ -231,6 +232,7 @@ export class V3asV1 implements TrainingService {
     }
 
     private async start(): Promise<void> {
+        logger.debug('Training srevice start run')
         await this.v3.init();
 
         this.v3.onRequestParameter(async (trialId) => {
@@ -244,9 +246,11 @@ export class V3asV1 implements TrainingService {
             }
         });
         this.v3.onMetric(async (trialId, metric) => {
+            console.trace('compat v3.onMetric', trialId, metric)
             this.emitter.emit('metric', { id: trialId, data: metric });
         });
         this.v3.onTrialStart(async (trialId, timestamp) => {
+            console.trace('compat v3.onTrialStart', trialId, timestamp)
             if (this.trialJobs[trialId] === undefined) {
                 this.trialJobs[trialId] = structuredClone(placeholderDetail);
                 this.trialJobs[trialId].id = trialId;
@@ -255,6 +259,7 @@ export class V3asV1 implements TrainingService {
             this.trialJobs[trialId].startTime = timestamp;
         });
         this.v3.onTrialEnd(async (trialId, timestamp, exitCode) => {
+            console.trace('compat v3.onTrialEnd', trialId, timestamp, exitCode)
             const trial = this.trialJobs[trialId];
             if (exitCode === 0) {
                 trial.status = 'SUCCEEDED';
@@ -273,7 +278,7 @@ export class V3asV1 implements TrainingService {
 
         this.environments = await this.v3.start();
         await this.v3.uploadDirectory('trial_code', this.config.trialCodeDirectory);
-
+        
         this.startDeferred.resolve();
     }
 

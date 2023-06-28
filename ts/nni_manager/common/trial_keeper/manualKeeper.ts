@@ -34,10 +34,11 @@ import globals from 'common/globals';
 import { Logger, getLogger } from 'common/log';
 import type { EnvironmentInfo } from 'common/training_service_v3';
 import { collectPlatformInfo } from './collect_platform_info';
-import { TrialProcess, TrialProcessOptions } from './process';
+// import { TrialProcess, TrialProcessOptions } from './process';
 import { TaskSchedulerClient } from './task_scheduler_client';
+import { assert } from 'console';
 
-export declare namespace TrialKeeper {
+export declare namespace ManualTrialKeeper {
     export interface TrialOptions {
         id: string;
         command: string;
@@ -54,16 +55,18 @@ export declare namespace TrialKeeper {
     }
 }
 
-export class TrialKeeper {
+export class ManualTrialKeeper {
     private envId: string;
     private envInfo!: EnvironmentInfo;
     private channels: HttpChannelServer;
+    private trial_info_channel: HttpChannelServer;
     private dirs: Map<string, string> = new Map();
     private emitter: EventEmitter = new EventEmitter();
     private scheduler: TaskSchedulerClient;
     private log: Logger;
     private platform: string;
-    private trials: Map<string, TrialProcess> = new Map();
+    // private trials: Map<string, TrialProcess> = new Map();
+    private trialIds: Map<string, string> = new Map();
     private gpuEnabled: boolean;
 
     constructor(environmentId: string, platform: string, enableGpuScheduling: boolean) {
@@ -85,6 +88,24 @@ export class TrialKeeper {
                 this.log.warning(`Unexpected command from trial ${trialId}:`, command);
             }
         });
+
+        // http communication channel for trial start and stop
+        this.trial_info_channel = new HttpChannelServer(this.envId, `/trial-info/${this.envId}`);
+        this.trial_info_channel.onReceive((channelId, command) => {
+            this.log.trace(channelId)
+            if (command.type === 'request_trial_info') {
+                this.emitter.emit('request_trial_info', this.trialIds.get(channelId), Date.now());
+                this.emitter.emit('trial_start', this.trialIds.get(channelId), Date.now())
+            }
+            if (command.type === 'request_trial_stop') {
+                this.emitter.emit('request_trial_stop', command.trialId, Date.now(), command.exitCode);
+                this.emitter.emit('trial_stop', command.trialId, Date.now(), command.exitCode);
+                this.trial_info_channel.send('stop', {});
+            }
+            else{
+                this.log.warning(`Unexpected command from http trial ${command.trialId}:`, command);
+            }
+        });
     }
 
     // TODO: support user configurable init command
@@ -94,6 +115,7 @@ export class TrialKeeper {
         await Promise.all([
             this.scheduler.start(),
             this.channels.start(),
+            this.trial_info_channel.start()
         ]);
 
         Object.assign(this.envInfo, await collectPlatformInfo(this.gpuEnabled));
@@ -104,10 +126,11 @@ export class TrialKeeper {
         let promises: Promise<void>[] = [
             this.scheduler.shutdown(),
             this.channels.shutdown(),
+            this.trial_info_channel.shutdown()
         ];
 
-        const trials = Array.from(this.trials.values());
-        promises = promises.concat(trials.map(trial => trial.kill()));
+        // const trials = Array.from(this.trials.values());
+        // promises = promises.concat(trials.map(trial => trial.kill()));
 
         await Promise.all(promises);
     }
@@ -130,10 +153,14 @@ export class TrialKeeper {
         this.registerDirectory(name, extractDir);
     }
 
-    // FIXME: the method name will be changed when we support distributed trials
-    public async createTrial(options: TrialKeeper.TrialOptions): Promise<boolean> {
-        console.trace('keeper createTrial');
+    
+    public async createTrial(options: ManualTrialKeeper.TrialOptions): Promise<boolean> {
+        this.trialIds.set(String(options.sequenceId ?? -1), options.id)
+        
+        console.trace('HttpKeeper trialIds:', this.trialIds);
         const trialId = options.id;
+
+        this.log.debug('Httpkeeper createTrial start')
 
         const gpuEnv = await this.scheduler.schedule(trialId, options.gpuNumber, options.gpuRestrictions);
         if (gpuEnv === null) {
@@ -146,41 +173,71 @@ export class TrialKeeper {
         const outputDir = path.join(globals.paths.experimentRoot, 'environments', this.envId, 'trials', trialId);
         await fs.mkdir(outputDir, { recursive: true });
 
-        const trial = new TrialProcess(trialId);
-        trial.onStart(timestamp => {
-            this.emitter.emit('trial_start', trialId, timestamp);
-        });
-        trial.onStop((timestamp, exitCode, _signal) => {
-            this.emitter.emit('trial_stop', trialId, timestamp, exitCode);
-            this.scheduler.release(trialId);  // TODO: fire and forget, handle exception?
-        });
+        // const trial = new TrialProcess(trialId);
+        // trial.onStart(timestamp => {
+        //     this.emitter.emit('trial_start', trialId, timestamp);
+        // });
+        // trial.onStop((timestamp, exitCode, _signal) => {
+        //     this.emitter.emit('trial_stop', trialId, timestamp, exitCode);
+        //     this.scheduler.release(trialId);  // TODO: fire and forget, handle exception?
+        // });
 
-        const procOptions: TrialProcessOptions = {
-            command: options.command,
-            codeDirectory: this.dirs.get(options.codeDirectoryName)!,
-            outputDirectory: outputDir,
-            commandChannelUrl: this.channels.getChannelUrl(trialId),
-            platform: this.platform,
-            sequenceId: options.sequenceId,
-            environmentVariables: gpuEnv,
-        }
-        console.trace('createTrial trialProcess procOptions: ', procOptions)
-        const success = await trial.spawn(procOptions);
+        const env: Record<string, string> = {...gpuEnv };
+        env['NNI_CODE_DIR'] = this.dirs.get(options.codeDirectoryName)!;
+        env['NNI_EXP_ID'] = globals.args.experimentId;
+        env['NNI_OUTPUT_DIR'] = outputDir;
+        env['NNI_PLATFORM'] = this.platform;
+        env['NNI_SYS_DIR'] = outputDir;
+        env['NNI_TRIAL_COMMAND_CHANNEL'] = this.channels.getChannelUrl(trialId);
+        env['NNI_TRIAL_HTTP_INFO_CHANNEL'] = this.trial_info_channel.getChannelUrl(String(options.sequenceId ?? -1));
+        env['NNI_TRIAL_JOB_ID'] = trialId;
+        env['NNI_TRIAL_SEQ_ID'] = String(options.sequenceId ?? -1);
+        
+        const command = {type: 'trial_info', env};
+
+        this.trial_info_channel.send(String(options.sequenceId ?? -1), command);
+        this.trial_info_channel.send('stop', {});
+        this.emitter.on('request_trial_info', this._trial_recive_requset_info);
+        this.emitter.on('request_trial_stop', this._trial_recive_requset_stop);
+        console.trace('trial_info_channel command',command);
+
+        // const procOptions: TrialProcessOptions = {
+        //     command: options.command,
+        //     codeDirectory: this.dirs.get(options.codeDirectoryName)!,
+        //     outputDirectory: outputDir,
+        //     commandChannelUrl: this.channels.getChannelUrl(trialId),
+        //     platform: this.platform,
+        //     sequenceId: options.sequenceId,
+        //     environmentVariables: gpuEnv,
+        // }
+
+        // const success = await trial.spawn(procOptions);
+
+        // console.trace('createTrial trial_info_channel',this.trial_info_channel.getChannelUrl(''))
+        // console.trace('createTrial procOptions',procOptions)
+
+        const success = true;
         if (success) {
-            this.trials.set(trialId, trial);
+            // this.trials.set(trialId, trial);
             return true;
         } else {
             return false;
         }
     }
-
     public async stopTrial(trialId: string): Promise<void> {
-        await this.trials.get(trialId)!.kill();
+        // await this.trials.get(trialId)!.kill();
+        await this.trialIds.get(trialId);
     }
 
     public async sendCommand(trialId: string, command: Command): Promise<void> {
         this.channels.send(trialId, command);
-        console.trace('keeper sendCommand', trialId, command);
+    }
+
+    public _trial_recive_requset_info(trialId: string, timestamp: number): void{
+        console.trace('HttpKeeper recived requset for trial info and start:', trialId, timestamp)
+    }
+    public _trial_recive_requset_stop(trialId: string, timestamp: number, exitCode: number | null): void{
+        console.trace('HttpKeeper recived stop:', trialId, timestamp, exitCode)
     }
 
     public onTrialStart(callback: (trialId: string, timestamp: number) => void): void {

@@ -10,6 +10,7 @@
 import type { TrainingServiceConfig } from 'common/experimentConfig';
 import type { TrainingServiceV3 } from 'common/training_service_v3';
 import { LocalTrainingServiceV3 } from '../local_v3';
+import { ManualLocalTrainingServiceV3 } from '../manualLocal_v3';
 import { RemoteTrainingServiceV3 } from '../remote_v3';
 
 export function trainingServiceFactoryV3(config: TrainingServiceConfig): TrainingServiceV3 {
@@ -17,6 +18,8 @@ export function trainingServiceFactoryV3(config: TrainingServiceConfig): Trainin
         return new LocalTrainingServiceV3('local', config);
     } else if (config.platform.startsWith('remote')) {
         return new RemoteTrainingServiceV3('remote', config);
+    } else if (config.platform.startsWith('manual')) {
+        return new ManualLocalTrainingServiceV3('manual', config);
     } else {
         throw new Error(`Bad training service platform: ${config.platform}`);
     }
