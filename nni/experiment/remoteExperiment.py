@@ -157,6 +157,8 @@ class Experiment:
         run_mode
             Running the experiment in foreground or background
         """
+        raise NotImplementedError('Cannot resume or start an experiment (nni manager) from remote')
+    
         if run_mode is not RunMode.Detach:
             # If the experiment ends normally without KeyboardInterrupt, stop won't be automatically called.
             # As a result, NNI manager will continue to run in the background, even after run() exits.
@@ -173,11 +175,11 @@ class Experiment:
         if self._proc is not None:
             try:
                 rest.delete(self.port, '/experiment', self.url_prefix)
-                self._proc.wait()
+                # self._proc.wait()
             except Exception as e:
                 _logger.exception(e)
                 _logger.warning('Cannot gracefully stop experiment, killing NNI process...')
-                kill_command(self._proc.pid)
+                # kill_command(self._proc.pid)
 
         self.port = None
         self._proc = None
@@ -202,7 +204,7 @@ class Experiment:
                 return True
             if status == 'ERROR':
                 return False
-            time.sleep(10)
+            time.sleep(2)
 
     def _run_impl(self, port: int, wait_completion: bool, debug: bool) -> bool | None:
         try:
@@ -245,6 +247,7 @@ class Experiment:
 
         Parameters are return values are same as :meth:`run`.
         """
+        raise NotImplementedError('Cannot resume or start an experiment (nni manager) from remote')
         if self.has_checkpoint():
             _logger.info('Checkpoint is found. Resume the experiment: %s', self.id)
             return self.resume(port, wait_completion, debug)
@@ -330,6 +333,7 @@ class Experiment:
         #     _logger.warning('Get experiment pid failed, can not stop experiment by stop().')
         # else:
         #     experiment._proc = psutil.Process(pid)
+        experiment._proc = 'remote process'
         _logger.info('Connect to port %d success, experiment id is %s, status is %s.', port, experiment.id, status)
         return experiment
 
@@ -354,6 +358,7 @@ class Experiment:
         # We will stop supporting experiment_id as keyword arguments instantly right now,
         # because keeping it compatible will be very tricky and not worth the effort.
         # But experiment_id as positional argument is still supported for now.
+        raise NotImplementedError('Cannot resume or start an experiment (nni manager) from remote')
         if isinstance(self, str):
             _logger.warning('Experiment.resume(id) is deprecated (and has already stopped working for non-HPO experiments). '
                             'Use Experiment(id).resume() instead.')
@@ -385,6 +390,7 @@ class Experiment:
         Return self instance.
         """
         # Backward compatibility
+        raise NotImplementedError('Cannot resume or start an experiment (nni manager) from remote')
         if isinstance(self, str):
             _logger.warning('Experiment.view(id) is deprecated (and has already stopped working for non-HPO experiments). '
                             'Use Experiment(id).view() instead.')

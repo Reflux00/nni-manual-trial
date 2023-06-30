@@ -8,6 +8,7 @@ import logging
 import requests
 
 from .base import Command, CommandChannel
+import time
 
 _logger = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ class HttpChannel(CommandChannel):
         requests.put(self._url, json=command)
 
     def receive(self) -> Command | None:
-        while True:
+        start_time = time.time()
+        while True and (time.time() - start_time < 100.0):
             r = requests.get(self._url)
             if r.status_code == 200:
                 return r.json()

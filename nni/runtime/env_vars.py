@@ -27,7 +27,7 @@ _dispatcher_env_var_names = [
     'NNI_TUNER_COMMAND_CHANNEL',
 ]
 
-def _load_env_vars(env_var_names):
+def _load_env_vars(env_var_names) -> namedtuple:
     env_var_dict = {k: os.environ.get(k) for k in env_var_names}
     return namedtuple('EnvVars', env_var_names)(**env_var_dict)  # pylint: disable=unused-variable
 

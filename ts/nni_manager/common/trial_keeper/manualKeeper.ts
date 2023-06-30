@@ -37,6 +37,7 @@ import { collectPlatformInfo } from './collect_platform_info';
 // import { TrialProcess, TrialProcessOptions } from './process';
 import { TaskSchedulerClient } from './task_scheduler_client';
 import { assert } from 'console';
+import { delay } from 'common/utils';
 
 export declare namespace ManualTrialKeeper {
     export interface TrialOptions {
@@ -66,7 +67,7 @@ export class ManualTrialKeeper {
     private log: Logger;
     private platform: string;
     // private trials: Map<string, TrialProcess> = new Map();
-    private trialIds: Map<string, string> = new Map();
+    private trialIdQueue: Map<string, string> = new Map();
     private gpuEnabled: boolean;
 
     constructor(environmentId: string, platform: string, enableGpuScheduling: boolean) {
@@ -83,7 +84,12 @@ export class ManualTrialKeeper {
 
         this.channels = new HttpChannelServer(this.envId, `/env/${this.envId}`);
         this.channels.onReceive((trialId, command) => {
+            // delay(1000*0.2)
             this.emitter.emit('command', trialId, command);
+            if (command.type === 'metric'){
+                console.trace('receive merit and stop', command, trialId, Date.now(), 0);
+                this.emitter.emit('trial_stop', trialId, Date.now(), 0);
+            }
             if (command.type !== 'request_parameter' && command.type !== 'metric') {
                 this.log.warning(`Unexpected command from trial ${trialId}:`, command);
             }
@@ -91,19 +97,22 @@ export class ManualTrialKeeper {
 
         // http communication channel for trial start and stop
         this.trial_info_channel = new HttpChannelServer(this.envId, `/trial-info/${this.envId}`);
-        this.trial_info_channel.onReceive((channelId, command) => {
-            this.log.trace(channelId)
-            if (command.type === 'request_trial_info') {
-                this.emitter.emit('request_trial_info', this.trialIds.get(channelId), Date.now());
-                this.emitter.emit('trial_start', this.trialIds.get(channelId), Date.now())
+        this.trial_info_channel.onReceive( (channelId, command) => {
+            this.log.trace('trial_info_channel receive command:', channelId, this.trialIdQueue.get(channelId), command)
+            if (command.type === 'set_trial_start') {
+                // this.emitter.emit('set_trial_start', this.trialIdQueue.get(channelId), Date.now());
+                this.emitter.emit('trial_start', this.trialIdQueue.get(channelId), Date.now());
+                this.trial_info_channel.send(channelId, {'trial_status': 'RUNNING'});
+                
             }
-            if (command.type === 'request_trial_stop') {
-                this.emitter.emit('request_trial_stop', command.trialId, Date.now(), command.exitCode);
-                this.emitter.emit('trial_stop', command.trialId, Date.now(), command.exitCode);
-                this.trial_info_channel.send('stop', {});
+            else if (command.type === 'set_trial_stop') {
+                this.trial_info_channel.send(channelId, {'trial_status': 'DONE'});
+                // delay(1000*0.4)
+                // this.emitter.emit('set_trial_stop', this.trialIdQueue.get(channelId), Date.now(), command.exitCode);
+                this.emitter.emit('trial_stop', this.trialIdQueue.get(channelId), Date.now(), 0);
             }
             else{
-                this.log.warning(`Unexpected command from http trial ${command.trialId}:`, command);
+                this.log.warning(`Unexpected command from http trial ${this.trialIdQueue.get(channelId)}:`, command);
             }
         });
     }
@@ -119,6 +128,11 @@ export class ManualTrialKeeper {
         ]);
 
         Object.assign(this.envInfo, await collectPlatformInfo(this.gpuEnabled));
+
+        // // for debug use only
+        // this.emitter.on('set_trial_start', this.print_trial_start_request_info);
+        // this.emitter.on('set_trial_stop', this.print_trial_stop_request_info);
+
         return this.envInfo;
     }
 
@@ -131,6 +145,8 @@ export class ManualTrialKeeper {
 
         // const trials = Array.from(this.trials.values());
         // promises = promises.concat(trials.map(trial => trial.kill()));
+
+        // this.emitter.removeAllListeners()
 
         await Promise.all(promises);
     }
@@ -155,12 +171,12 @@ export class ManualTrialKeeper {
 
     
     public async createTrial(options: ManualTrialKeeper.TrialOptions): Promise<boolean> {
-        this.trialIds.set(String(options.sequenceId ?? -1), options.id)
+        this.trialIdQueue.set(String(options.sequenceId ?? -1), options.id)
         
-        console.trace('HttpKeeper trialIds:', this.trialIds);
+        this.log.debug('HttpKeeper trialIdQueue:', this.trialIdQueue);
         const trialId = options.id;
 
-        this.log.debug('Httpkeeper createTrial start')
+        this.log.debug('HttpKeeper createTrial start')
 
         const gpuEnv = await this.scheduler.schedule(trialId, options.gpuNumber, options.gpuRestrictions);
         if (gpuEnv === null) {
@@ -196,10 +212,8 @@ export class ManualTrialKeeper {
         const command = {type: 'trial_info', env};
 
         this.trial_info_channel.send(String(options.sequenceId ?? -1), command);
-        this.trial_info_channel.send('stop', {});
-        this.emitter.on('request_trial_info', this._trial_recive_requset_info);
-        this.emitter.on('request_trial_stop', this._trial_recive_requset_stop);
-        console.trace('trial_info_channel command',command);
+        // this.trial_info_channel.send('stop', {});
+        this.log.debug('trial_info_channel command', command);
 
         // const procOptions: TrialProcessOptions = {
         //     command: options.command,
@@ -213,8 +227,8 @@ export class ManualTrialKeeper {
 
         // const success = await trial.spawn(procOptions);
 
-        // console.trace('createTrial trial_info_channel',this.trial_info_channel.getChannelUrl(''))
-        // console.trace('createTrial procOptions',procOptions)
+        // this.log.debug('createTrial trial_info_channel',this.trial_info_channel.getChannelUrl(''))
+        // this.log.debug('createTrial procOptions',procOptions)
 
         const success = true;
         if (success) {
@@ -226,18 +240,18 @@ export class ManualTrialKeeper {
     }
     public async stopTrial(trialId: string): Promise<void> {
         // await this.trials.get(trialId)!.kill();
-        await this.trialIds.get(trialId);
+        await this.trialIdQueue.get(trialId);
     }
 
     public async sendCommand(trialId: string, command: Command): Promise<void> {
         this.channels.send(trialId, command);
     }
 
-    public _trial_recive_requset_info(trialId: string, timestamp: number): void{
-        console.trace('HttpKeeper recived requset for trial info and start:', trialId, timestamp)
+    public print_trial_start_request_info(trialId: string, timestamp: number): void{
+        console.debug('HttpKeeper received start:', trialId, timestamp)
     }
-    public _trial_recive_requset_stop(trialId: string, timestamp: number, exitCode: number | null): void{
-        console.trace('HttpKeeper recived stop:', trialId, timestamp, exitCode)
+    public print_trial_stop_request_info(trialId: string, timestamp: number, exitCode: number | null): void{
+        console.debug('HttpKeeper received stop:', trialId, timestamp, exitCode)
     }
 
     public onTrialStart(callback: (trialId: string, timestamp: number) => void): void {
