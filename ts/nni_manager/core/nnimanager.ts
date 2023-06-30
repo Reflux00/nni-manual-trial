@@ -488,7 +488,7 @@ class NNIManager implements Manager {
             const module_ = await import('../training_service/kubernetes/frameworkcontroller/frameworkcontrollerTrainingService');
             return new module_.FrameworkControllerTrainingService();
         } else {
-            this.pollInterval = 0.05;
+            this.pollInterval = 0.02;
             const module_ = await import('../training_service/v3/compat');
             return new module_.V3asV1(config.trainingService as TrainingServiceConfig);
         }
@@ -580,7 +580,7 @@ class NNIManager implements Manager {
         }
         while (!['ERROR', 'STOPPING', 'STOPPED'].includes(this.status.status)) {
             this.dispatcher.sendCommand(PING);
-            await delay(1000 * this.pollInterval); // 5 seconds
+            await delay(1000 * this.pollInterval); // this.pollInterval  0.5 seconds
         }
     }
 
@@ -729,7 +729,7 @@ class NNIManager implements Manager {
                     }
                     const form = this.waitingTrials.shift() as TrialJobApplicationForm;
                     this.currSubmittedTrialNum++;
-                    this.log.info('submitTrialJob: form:', form);
+                    // this.log.info('submitTrialJob: form:', form);
                     const trialJobDetail: TrialJobDetail = await this.trainingService.submitTrialJob(form);
                     const Snapshot: TrialJobDetail = Object.assign({}, trialJobDetail);
                     await this.storeExperimentProfile();

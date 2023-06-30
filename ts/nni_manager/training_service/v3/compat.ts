@@ -75,7 +75,7 @@ export class V3asV1 implements TrainingService {
 
     public async submitTrialJob(form: TrialJobApplicationForm): Promise<TrialJobDetail> {
         await this.startDeferred.promise;
-        console.trace('submitTrialJob', form);
+        logger.trace('submitTrialJob', form);
 
         let trialId: string | null = null;
         let envId: string | null = null;
@@ -246,11 +246,13 @@ export class V3asV1 implements TrainingService {
             }
         });
         this.v3.onMetric(async (trialId, metric) => {
-            console.trace('compat v3.onMetric', trialId, metric)
+            logger.debug('compat v3.onMetric', trialId, metric)
             this.emitter.emit('metric', { id: trialId, data: metric });
+            // const trial = this.trialJobs[trialId];
+            // trial.status = 'SUCCEEDED';
         });
         this.v3.onTrialStart(async (trialId, timestamp) => {
-            console.trace('compat v3.onTrialStart', trialId, timestamp)
+            logger.debug('compat v3.onTrialStart', trialId, timestamp)
             if (this.trialJobs[trialId] === undefined) {
                 this.trialJobs[trialId] = structuredClone(placeholderDetail);
                 this.trialJobs[trialId].id = trialId;
@@ -259,7 +261,8 @@ export class V3asV1 implements TrainingService {
             this.trialJobs[trialId].startTime = timestamp;
         });
         this.v3.onTrialEnd(async (trialId, timestamp, exitCode) => {
-            console.trace('compat v3.onTrialEnd', trialId, timestamp, exitCode)
+            logger.debug('compat v3.onTrialEnd', trialId, timestamp, exitCode)
+            // console.trace('compat v3.onTrialEnd', trialId, timestamp, exitCode)
             const trial = this.trialJobs[trialId];
             if (exitCode === 0) {
                 trial.status = 'SUCCEEDED';

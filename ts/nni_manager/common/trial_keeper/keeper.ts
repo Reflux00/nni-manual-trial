@@ -132,7 +132,7 @@ export class TrialKeeper {
 
     // FIXME: the method name will be changed when we support distributed trials
     public async createTrial(options: TrialKeeper.TrialOptions): Promise<boolean> {
-        console.trace('keeper createTrial');
+
         const trialId = options.id;
 
         const gpuEnv = await this.scheduler.schedule(trialId, options.gpuNumber, options.gpuRestrictions);
@@ -163,8 +163,8 @@ export class TrialKeeper {
             platform: this.platform,
             sequenceId: options.sequenceId,
             environmentVariables: gpuEnv,
-        }
-        console.trace('createTrial trialProcess procOptions: ', procOptions)
+        };
+
         const success = await trial.spawn(procOptions);
         if (success) {
             this.trials.set(trialId, trial);
@@ -180,7 +180,6 @@ export class TrialKeeper {
 
     public async sendCommand(trialId: string, command: Command): Promise<void> {
         this.channels.send(trialId, command);
-        console.trace('keeper sendCommand', trialId, command);
     }
 
     public onTrialStart(callback: (trialId: string, timestamp: number) => void): void {

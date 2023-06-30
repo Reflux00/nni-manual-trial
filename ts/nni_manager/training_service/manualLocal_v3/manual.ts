@@ -99,7 +99,6 @@ export class ManualLocalTrainingServiceV3 implements TrainingServiceV3 {
 
     public onTrialStart(callback: (trialId: string, timestamp: number) => Promise<void>): void {
         this.trialKeeper.onTrialStart(callback);
-        console.trace('local onTrialStart');
     }
 
     public onTrialEnd(callback: (trialId: string, timestamp: number, exitCode: number | null) => Promise<void>): void {

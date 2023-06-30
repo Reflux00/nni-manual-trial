@@ -42,7 +42,6 @@ export class HttpChannelServer implements CommandChannelServer {
     public async start(): Promise<void> {
         this.serving = true;
         const channelPath = globals.rest.urlJoin(this.path, ':channel');
-        console.trace('http channelPath', channelPath)
         globals.rest.registerSyncHandler('GET', channelPath, this.handleGet.bind(this));
         globals.rest.registerSyncHandler('PUT', channelPath, this.handlePut.bind(this));
     }
@@ -72,6 +71,7 @@ export class HttpChannelServer implements CommandChannelServer {
         const channelId = request.params['channel'];
         const promise = this.getOutgoingQueue(channelId).asyncPop(timeoutMilliseconds);
         promise.then(command => {
+            this.log.debug('http handle get', channelId, command)
             if (command === null) {
                 response.sendStatus(this.serving ? HttpRequestTimeout : HttpGone);
             } else {
@@ -89,6 +89,8 @@ export class HttpChannelServer implements CommandChannelServer {
         const channelId = request.params['channel'];
         const command = request.body;
         this.emitter.emit('receive', channelId, command);
+        this.log.debug('http handle put', channelId, command)
+
         response.send();
     }
 
