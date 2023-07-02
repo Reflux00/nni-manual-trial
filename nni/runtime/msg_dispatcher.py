@@ -13,6 +13,9 @@ from .msg_dispatcher_base import MsgDispatcherBase
 from .tuner_command_channel import CommandType
 from ..common.serializer import dump, load
 from ..utils import MetricType
+import time
+
+from queue import Queue
 
 _logger = logging.getLogger(__name__)
 
@@ -73,6 +76,7 @@ class MsgDispatcher(MsgDispatcherBase):
         self.assessor = assessor
         if assessor is None:
             _logger.debug('Assessor is not configured')
+        self._received_final_metrics = set()
 
     def load_checkpoint(self):
         self.tuner.load_checkpoint()
@@ -134,6 +138,7 @@ class MsgDispatcher(MsgDispatcherBase):
               - 'value': metric value reported by nni.report_final_result()
               - 'type': report type, support {'FINAL', 'PERIODICAL'}
         """
+        _logger.info(f'Msg Dispatcher, data {data}')
         if self.is_created_in_previous_exp(data['parameter_id']):
             if data['type'] == MetricType.FINAL:
                 # only deal with final metric using import data
@@ -145,6 +150,7 @@ class MsgDispatcher(MsgDispatcherBase):
         if 'value' in data:
             data['value'] = load(data['value'])
         if data['type'] == MetricType.FINAL:
+            self._received_final_metrics.add(data['trial_job_id'])
             self._handle_final_metric_data(data)
         elif data['type'] == MetricType.PERIODICAL:
             if self.assessor is not None:
@@ -175,6 +181,9 @@ class MsgDispatcher(MsgDispatcherBase):
             # The end of the recovered trial is ignored
             return
         trial_job_id = data['trial_job_id']
+        if trial_job_id not in self._received_final_metrics:
+            _logger.warning('Trial end before final metrics, sleep 0.2 s.')
+            time.sleep(0.2)
         _ended_trials.add(trial_job_id)
         if trial_job_id in _trial_history:
             _trial_history.pop(trial_job_id)
@@ -242,7 +251,12 @@ class MsgDispatcher(MsgDispatcherBase):
             _logger.debug('env var: NNI_INCLUDE_INTERMEDIATE_RESULTS: [%s]',
                           dispatcher_env_vars.NNI_INCLUDE_INTERMEDIATE_RESULTS)
             if dispatcher_env_vars.NNI_INCLUDE_INTERMEDIATE_RESULTS == 'true':
-                self._earlystop_notify_tuner(data)
+                pass    
+            self._earlystop_notify_tuner(data)
+            
+            # data['event'] = 'SUCCEEDED'
+            # data['hyper_params'] = {'parameter_id': data['parameter_id']}
+            # self.enqueue_command(CommandType.TrialEnd, data)
         else:
             _logger.debug('GOOD')
 
@@ -254,3 +268,4 @@ class MsgDispatcher(MsgDispatcherBase):
         data['type'] = MetricType.FINAL
         data['value'] = dump(data['value'])
         self.enqueue_command(CommandType.ReportMetricData, data)
+

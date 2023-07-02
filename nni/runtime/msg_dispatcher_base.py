@@ -9,7 +9,8 @@ from .env_vars import dispatcher_env_vars
 from ..common import load
 from ..recoverable import Recoverable
 from .tuner_command_channel import CommandType, TunerCommandChannel
-
+from ..utils import MetricType
+import time
 
 _logger = logging.getLogger(__name__)
 logging.basicConfig(format='%(asctime)s.%(msecs)03d %(levelname)s {%(module)s} [%(funcName)s] %(message)s', datefmt='%Y-%m-%d,%H:%M:%S')
@@ -48,10 +49,14 @@ class MsgDispatcherBase(Recoverable):
             self._channel.connect()
         self.default_command_queue = Queue()
         self.assessor_command_queue = Queue()
+        self.trial_end_command_queue = Queue()
+        self.received_final_metrics_queue = {}
+        self.received_end_trial_queue = {}
         # here daemon should be True, because their parent thread is configured as daemon to enable smooth exit of NAS experiment.
         # if daemon is not set, these threads will block the daemon effect of their parent thread.
         self.default_worker = threading.Thread(target=self.command_queue_worker, args=(self.default_command_queue,), daemon=True)
         self.assessor_worker = threading.Thread(target=self.command_queue_worker, args=(self.assessor_command_queue,), daemon=True)
+        self.trial_end_worker = threading.Thread(target=self.command_queue_worker, args=(self.trial_end_command_queue,), daemon=True)
         self.worker_exceptions = []
 
     def run(self):
@@ -62,6 +67,7 @@ class MsgDispatcherBase(Recoverable):
 
         self.default_worker.start()
         self.assessor_worker.start()
+        self.trial_end_worker.start()
 
         if dispatcher_env_vars.NNI_MODE == 'resume':
             self.load_checkpoint()
@@ -81,6 +87,7 @@ class MsgDispatcherBase(Recoverable):
         self.stopping = True
         self.default_worker.join()
         self.assessor_worker.join()
+        self.trial_end_worker.join()
         self._channel.disconnect()
 
         _logger.info('Dispatcher terminiated')
@@ -104,7 +111,26 @@ class MsgDispatcherBase(Recoverable):
         while True:
             try:
                 # set timeout to ensure self.stopping is checked periodically
-                command, data = command_queue.get(timeout=3)
+                command, data = command_queue.get(timeout=0.1)
+                _logger.debug(f'received, command {command}, data {data}')
+
+                if command == CommandType.ReportMetricData and data['type'] == MetricType.FINAL:
+                    if self.received_final_metrics_queue.get(data['trial_job_id'], None) is not None:
+                        _logger.debug(f'Receive final merit too many times, data {data}')
+                        continue
+
+                    self.received_final_metrics_queue[data['trial_job_id']] = 1
+
+
+                elif command == CommandType.TrialEnd:# and self.received_final_metrics_queue.get(data['trial_job_id'], None) is None:
+                     
+                    if self.received_end_trial_queue.get(data['trial_job_id'], None) is not None:
+                        _logger.debug(f'Receive TrialEnd too many times, data {data}')
+                        continue
+                    
+                    self.received_end_trial_queue[data['trial_job_id']] = 1
+                    # continue 
+
                 try:
                     self.process_command(command, data)
                 except Exception as e:
@@ -119,8 +145,9 @@ class MsgDispatcherBase(Recoverable):
     def enqueue_command(self, command, data):
         """Enqueue command into command queues
         """
-        if command == CommandType.TrialEnd or (
-                command == CommandType.ReportMetricData and data['type'] == 'PERIODICAL'):
+        if command == CommandType.TrialEnd:
+            self.trial_end_command_queue.put((command, data))
+        elif command == CommandType.ReportMetricData and data['type'] == 'PERIODICAL':
             self.assessor_command_queue.put((command, data))
         else:
             self.default_command_queue.put((command, data))
@@ -132,6 +159,10 @@ class MsgDispatcherBase(Recoverable):
         qsize = self.assessor_command_queue.qsize()
         if qsize >= QUEUE_LEN_WARNING_MARK:
             _logger.warning('assessor queue length: %d', qsize)
+
+        qsize = self.trial_end_command_queue.qsize()
+        if qsize >= QUEUE_LEN_WARNING_MARK:
+            _logger.warning('trial end queue length: %d', qsize)
 
     def process_command(self, command, data):
         _logger.debug('process_command: command: [%s], data: [%s]', command, data)
