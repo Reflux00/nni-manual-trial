@@ -27,7 +27,7 @@ class HttpChannel(CommandChannel):
 
     def receive(self) -> Command | None:
         start_time = time.time()
-        while True and (time.time() - start_time < 100.0):
+        while True and (time.time() - start_time < 600.0):
             r = requests.get(self._url)
             if r.status_code == 200:
                 return r.json()
@@ -37,3 +37,5 @@ class HttpChannel(CommandChannel):
                 return None
             _logger.error('Bad status %s %s', r.status_code, r.text)
             raise IOError(f'HTTP command channel received unexpected status code {r.status_code}')
+        
+        raise IOError(f'Timeout (300 s) to request {self._url}, status code {r.status_code}')

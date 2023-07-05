@@ -649,7 +649,7 @@ class BOHB(MsgDispatcherBase):
             hyper_params: the hyperparameters (a string) generated and returned by tuner
         """
         hyper_params = nni.load(data['hyper_params'])
-        if self.is_created_in_previous_exp(hyper_params['parameter_id']):
+        if isinstance(hyper_params, int) and self.is_created_in_previous_exp(hyper_params['parameter_id']):
             # The end of the recovered trial is ignored
             return
         logger.debug('Tuner handle trial end, result is %s', data)
@@ -698,7 +698,7 @@ class BOHB(MsgDispatcherBase):
         ValueError
             Data type not supported
         """
-        if self.is_created_in_previous_exp(data['parameter_id']):
+        if isinstance(data['parameter_id'], int) and self.is_created_in_previous_exp(data['parameter_id']):
             if data['type'] == MetricType.FINAL:
                 # only deal with final metric using import data
                 param = self.get_previous_param(data['parameter_id'])

@@ -134,7 +134,7 @@ class EvolutionTuner(Tuner):
         logger.info('trial (%d) end', parameter_id)
 
         if not success:
-            self.running_trials.pop(parameter_id)
+            self.running_trials.pop(parameter_id, None)
             self._random_generate_individual()
 
         if self.credit > 1:
