@@ -24,7 +24,10 @@ import traceback
 from zipfile import ZipFile
 
 
-node_version = 'v18.15.0'
+# node_version = 'v18.15.0'
+
+node_version = 'v16.14.2'
+yarn_version = 'v1.22.10'
 
 def _print(*args, color='cyan'):
     color_code = {'yellow': 33, 'cyan': 36}[color]
@@ -124,12 +127,43 @@ def clean():
             shutil.rmtree(path)
 
 
+# if sys.platform == 'linux' or sys.platform == 'darwin':
+#     node_executable = 'node'
+#     node_download_url, node_spec, node_extractor = _get_node_downloader()
+#     node_executable_in_tarball = 'bin/node'
+
+#     npm_executable = 'bin/npm'
+
+#     path_env_separator = ':'
+
+# elif sys.platform == 'win32':
+#     node_executable = 'node.exe'
+#     node_spec = f'node-{node_version}-win-x64'
+#     node_download_url = f'https://nodejs.org/dist/{node_version}/{node_spec}.zip'
+#     node_extractor = lambda data: ZipFile(BytesIO(data))
+#     node_executable_in_tarball = 'node.exe'
+
+#     npm_executable = 'npm.cmd'
+
+#     path_env_separator = ';'
+
+# else:
+#     raise RuntimeError('Unsupported system')
+
 if sys.platform == 'linux' or sys.platform == 'darwin':
     node_executable = 'node'
-    node_download_url, node_spec, node_extractor = _get_node_downloader()
+    _arch = 'x64' if platform.machine() == 'x86_64' else platform.machine()
+    node_spec = f'node-{node_version}-{sys.platform}-' + _arch
+    node_download_url = f'https://nodejs.org/dist/{node_version}/{node_spec}.tar.xz'
+    node_extractor = lambda data: tarfile.open(fileobj=BytesIO(data), mode='r:xz')
     node_executable_in_tarball = 'bin/node'
 
     npm_executable = 'bin/npm'
+    
+    yarn_executable = 'yarn'
+    yarn_download_url = f'https://github.com/yarnpkg/yarn/releases/download/{yarn_version}/yarn-{yarn_version}.tar.gz'
+
+    path_env_seperator = ':'
 
     path_env_separator = ':'
 
@@ -140,13 +174,13 @@ elif sys.platform == 'win32':
     node_extractor = lambda data: ZipFile(BytesIO(data))
     node_executable_in_tarball = 'node.exe'
 
-    npm_executable = 'npm.cmd'
+    yarn_executable = 'yarn.cmd'
+    yarn_download_url = f'https://github.com/yarnpkg/yarn/releases/download/{yarn_version}/yarn-{yarn_version}.tar.gz'
 
-    path_env_separator = ';'
+    path_env_seperator = ';'
 
 else:
     raise RuntimeError('Unsupported system')
-
 
 def download_toolchain():
     """

@@ -34,13 +34,13 @@ tuner:                          # Configure the tuning algorithm.
   classArgs:                    # Algorithm specific arguments. See the tuner's doc for details.
     optimize_mode: maximize     #   "minimize" or "maximize"
     sac_args:
-      start_steps: 96
+      start_steps: 64
       a_lr: 0.001
       c_lr: 0.001
       alpha: 0.2
       batch_size: 64
       adaptive_alpha: true
-      train_every: 16
+      train_every: 8
 
     # tpe_args:
     #   constant_liar_type: mean
@@ -69,11 +69,11 @@ tuner:                          # Configure the tuning algorithm.
 #     # The default value of gap is 1.
 #     gap: 1
 
-assessor:
-  name: Medianstop
-  classArgs:
-    optimize_mode: maximize
-    start_step: 5
+# assessor:
+#   name: Medianstop
+#   classArgs:
+#     optimize_mode: maximize
+#     start_step: 5
 
 # Configure the training platform.
 # Supported platforms: local, remote, openpai, aml, kubeflow, kubernetes, adl.
