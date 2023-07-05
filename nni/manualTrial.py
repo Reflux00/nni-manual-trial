@@ -284,7 +284,7 @@ def manual_report_final_result(sequence_id: int, metric: TrialMetric | dict[str,
     
     trial_command_channel = trialChannelQueue.get(sequence_id) if _exp != 'DEBUG' else StandaloneTrialCommandChannel()
     runtime = time.time() - trialStartTimeQueue[sequence_id]
-    time.sleep(0.2 - runtime if 0.2 - runtime > 0 else 0)
+    time.sleep(0.1 - runtime if 0.1 - runtime > 0 else 0)
 
     # for _ in range(2):
     #     time.sleep(0.1)
