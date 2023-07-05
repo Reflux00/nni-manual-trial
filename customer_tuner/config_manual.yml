@@ -1,0 +1,83 @@
+# This example shows more configurable fields comparing to the minimal "config.yml"
+# You can use "nnictl create --config config_detailed.yml" to launch this experiment.
+# If you see an error message saying "port 8080 is used", use "nnictl stop --all" to stop previous experiments.
+
+experimentName: SMAC_with_noise_maximize           # An optional name to help you distinguish experiments.
+
+# Hyper-parameter search space can either be configured here or in a seperate file.
+# "config.yml" shows how to specify a seperate search space file.
+# The common schema of search space is documented here:
+#   https://nni.readthedocs.io/en/stable/Tutorial/SearchSpaceSpec.html
+searchSpaceFile: search_space.json
+
+#debug: true
+
+trialCommand: sleep 3  # The command to launch a trial. NOTE: change "python3" to "python" if you are using Windows.
+trialCodeDirectory: .           # The path of trial code. By default it's ".", which means the same directory of this config file.
+trialGpuNumber: 0               # How many GPUs should each trial use. CUDA is required when it's greater than zero.
+
+trialConcurrency: 1             # Run 4 trials concurrently.
+maxTrialNumber: 30000              # Generate at most 10 trials.
+maxExperimentDuration: 10h       # Stop generating trials after 1 hour.
+
+# tuner:
+#   codeir: /home/nan/work/code/optimization/nni-manual-trial/customer_tuner/SAC/
+#   classFileName: SAC_tuner.py
+#   className: SACtuner
+#   classArgs:
+#     optimize_mode: maximize
+
+
+tuner:                          # Configure the tuning algorithm.
+  name: SMAC                     # Supported algorithms: TPE, Random, Anneal, Evolution, GridSearch, GPTuner, PBTTuner, etc.
+                                #   Full list:  https://nni.readthedocs.io/en/latest/Tuner/BuiltinTuner.html
+  classArgs:                    # Algorithm specific arguments. See the tuner's doc for details.
+    optimize_mode: maximize     #   "minimize" or "maximize"
+    # sac_args:
+    #   start_steps: 64
+    #   a_lr: 0.001
+    #   c_lr: 0.001
+    #   alpha: 1
+    #   batch_size: 64
+    #   adaptive_alpha: true
+    #   train_every: 1
+
+    # tpe_args:
+    #   constant_liar_type: mean
+    #   n_startup_jobs: 10
+    #   n_ei_candidates: 20
+    #   linear_forgetting: 100
+    #   prior_weight: 0
+    #   gamma: 0.5
+
+# Configure the training platform.
+# assessor:
+#   name: Curvefitting
+#   classArgs:
+#     # (required)The total number of epoch.
+#     #  We need to know the number of epoch to determine which point we need to predict.
+#     epoch_num: 20
+#     # (optional) In order to save our computing resource, we start to predict when we have more than only after receiving start_step number of reported intermediate results.
+#     # The default value of start_step is 6.
+#     start_step: 6
+#     # (optional) The threshold that we decide to early stop the worse performance curve.
+#     # For example: if threshold = 0.95, best performance in the history is 0.9, then we will stop the trial which predict value is lower than 0.95 * 0.9 = 0.855.
+#     # The default value of threshold is 0.95.
+#     threshold: 0.95
+#     # (optional) The gap interval between Assesor judgements.
+#     # For example: if gap = 2, start_step = 6, then we will assess the result when we get 6, 8, 10, 12...intermedian result.
+#     # The default value of gap is 1.
+#     gap: 1
+
+assessor:
+  name: Medianstop
+  classArgs:
+    optimize_mode: maximize
+    start_step: 5
+
+# Configure the training platform.
+# Supported platforms: local, remote, openpai, aml, kubeflow, kubernetes, adl.
+trainingService:
+  platform: manual
+  useActiveGpu: false           # NOTE: Use "true" if you are using an OS with graphical interface (e.g. Windows 10, Ubuntu desktop)
+                                #   Reason and details:  https://nni.readthedocs.io/en/latest/reference/experiment_config.html#useactivegpu
