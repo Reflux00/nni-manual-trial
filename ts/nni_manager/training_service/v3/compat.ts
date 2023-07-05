@@ -16,6 +16,7 @@ import {
 import type { EnvironmentInfo, Parameter, TrainingServiceV3 } from 'common/training_service_v3';
 import { trainingServiceFactoryV3 } from './factory';
 import { log } from 'console';
+import { delay } from 'common/utils';
 
 const logger = getLogger('TrainingServiceCompat');
 
@@ -246,10 +247,16 @@ export class V3asV1 implements TrainingService {
             }
         });
         this.v3.onMetric(async (trialId, metric) => {
-            logger.debug('compat v3.onMetric', trialId, metric)
+            logger.debug('compat v3.onMetric', trialId, metric);
+            // let metric_data = JSON.parse(metric);
+
+            // if (metric_data['type'] == 'FINAL'){
+            //     if (this.trialJobs[trialId] !== undefined){
+            //         const trial = this.trialJobs[trialId];
+            //         trial.status = 'SUCCEEDED';
+            //     }
+            // }
             this.emitter.emit('metric', { id: trialId, data: metric });
-            // const trial = this.trialJobs[trialId];
-            // trial.status = 'SUCCEEDED';
         });
         this.v3.onTrialStart(async (trialId, timestamp) => {
             logger.debug('compat v3.onTrialStart', trialId, timestamp)
@@ -270,8 +277,12 @@ export class V3asV1 implements TrainingService {
                 trial.status = 'FAILED';
             } else if (trial.isEarlyStopped) {
                 trial.status = 'EARLY_STOPPED';
-            } else {
+            }else {
                 trial.status = 'USER_CANCELED';
+            }
+            if (exitCode === 999){
+                trial.status = 'EARLY_STOPPED'; // for manual control only see manualKeeper
+                trial.isEarlyStopped = Boolean(true)
             }
             trial.endTime = timestamp;
         });

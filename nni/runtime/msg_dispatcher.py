@@ -150,8 +150,8 @@ class MsgDispatcher(MsgDispatcherBase):
         if 'value' in data:
             data['value'] = load(data['value'])
         if data['type'] == MetricType.FINAL:
-            self._received_final_metrics.add(data['trial_job_id'])
             self._handle_final_metric_data(data)
+            self._received_final_metrics.add(data['trial_job_id'])
         elif data['type'] == MetricType.PERIODICAL:
             if self.assessor is not None:
                 self._handle_intermediate_metric_data(data)
@@ -182,8 +182,8 @@ class MsgDispatcher(MsgDispatcherBase):
             return
         trial_job_id = data['trial_job_id']
         if trial_job_id not in self._received_final_metrics:
-            _logger.warning('Trial end before final metrics, sleep 0.2 s.')
-            time.sleep(0.2)
+            _logger.warning('Trial end before final metrics, sleep 10 s.')
+            time.sleep(10)
         _ended_trials.add(trial_job_id)
         if trial_job_id in _trial_history:
             _trial_history.pop(trial_job_id)
@@ -254,7 +254,7 @@ class MsgDispatcher(MsgDispatcherBase):
                 pass    
             self._earlystop_notify_tuner(data)
             
-            # data['event'] = 'SUCCEEDED'
+            # data['event'] = 'EARLY_STOPPED'
             # data['hyper_params'] = {'parameter_id': data['parameter_id']}
             # self.enqueue_command(CommandType.TrialEnd, data)
         else:

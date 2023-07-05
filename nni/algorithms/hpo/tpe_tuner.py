@@ -151,6 +151,7 @@ class TpeTuner(Tuner):
         self.optimize_mode = OptimizeMode(optimize_mode)
         self.args = TpeArguments(**(tpe_args or {}))
         self.space = None
+        _logger.info(f'TPE, tpe_args: {tpe_args}')
         # concurrent generate_parameters() calls are likely to yield similar result, because they use same history
         # the liar solves this problem by adding fake results to history
         self.liar = create_liar(self.args.constant_liar_type)
@@ -179,7 +180,7 @@ class TpeTuner(Tuner):
                     history[key].append(Record(value, lie))
         else:
             history = self._history
-
+        _logger.info("generating param for %s", parameter_id)
         params = suggest(self.args, self.rng, self.space, history)
         params = self.dedup(params)
 
@@ -194,11 +195,13 @@ class TpeTuner(Tuner):
             loss = -extract_scalar_reward(value)
         if self.liar:
             self.liar.update(loss)
+        _logger.info('trial (%d) end', parameter_id)
         params = self._running_params.pop(parameter_id)
         for key, value in params.items():
             self._history[key].append(Record(value, loss))
 
     def trial_end(self, parameter_id, _success, **kwargs):
+        _logger.info('trial end!!!!!!')
         self._running_params.pop(parameter_id, None)
 
     def import_data(self, data):  # for resuming experiment

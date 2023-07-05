@@ -28,6 +28,7 @@ import {
     REPORT_METRIC_DATA, REQUEST_TRIAL_JOBS, SEND_TRIAL_JOB_PARAMETER, TERMINATE, TRIAL_END, UPDATE_SEARCH_SPACE, IMPORT_DATA, ADD_CUSTOMIZED_TRIAL_JOB
 } from './commands';
 import { createDispatcherInterface, IpcInterface } from './ipcInterface';
+import { trace } from 'console';
 
 /**
  * NNIManager which implements Manager interface
@@ -617,6 +618,11 @@ class NNIManager implements Manager {
                 this.trialJobs.set(trialJobId, Object.assign({}, trialJobDetail));
                 await this.dataStore.storeTrialJobEvent(trialJobDetail.status, trialJobDetail.id, undefined, trialJobDetail);
             }
+            if (trialJobDetail.status === 'SUCCEEDED' || trialJobDetail.status === 'EARLY_STOPPED'||trialJobDetail.status === 'USER_CANCELED'){
+                this.trialJobs.set(trialJobId, Object.assign({}, trialJobDetail));
+                await this.dataStore.storeTrialJobEvent(trialJobDetail.status, trialJobDetail.id, undefined, trialJobDetail);
+                this.log.info(`Trial job ${trialJobDetail.id} status changed to ${trialJobDetail.status}`);
+            }
             const newTrialJobDetail: TrialJobDetail | undefined = this.trialJobs.get(trialJobId);
             if (newTrialJobDetail !== undefined) {
                 newTrialJobDetail.message = trialJobDetail.message;
@@ -738,10 +744,10 @@ class NNIManager implements Manager {
                     if (trialJobDetailSnapshot != undefined) {
                         await this.dataStore.storeTrialJobEvent(
                             trialJobDetailSnapshot.status, trialJobDetailSnapshot.id, form.hyperParameters.value, trialJobDetailSnapshot);
-                    } else {
-                        assert(false, `undefined trialJobDetail in trialJobs: ${trialJobDetail.id}`);
+                        } else {
+                            assert(false, `undefined trialJobDetail in trialJobs: ${trialJobDetail.id}`);
+                        }
                     }
-                }
             }
             await delay(1000 * this.pollInterval); // 5 seconds
         }
@@ -805,12 +811,21 @@ class NNIManager implements Manager {
 
     private async onTrialJobMetrics(metric: TrialJobMetric): Promise<void> {
         this.log.debug('NNIManager received trial job metrics:', metric);
-        if (this.trialJobs.has(metric.id)) {
+        const trialJobDetail: TrialJobDetail = await this.trainingService.getTrialJob(metric.id);
+        
+        if (this.trialJobs.has(metric.id) || trialJobDetail != undefined) {
             await this.dataStore.storeMetricData(metric.id, metric.data);
             if (this.dispatcher === undefined) {
                 throw new Error('Error: tuner has not been setup');
             }
             this.dispatcher.sendCommand(REPORT_METRIC_DATA, metric.data);
+            // 'WAITING', 'RUNNING', 'SUCCEEDED'
+            // if( trialJobDetail.status === 'SUCCEEDED'){
+            //     // console.trace('NNIManager received trial job metrics:', metric);
+            //     this.trialJobs.set(metric.id, Object.assign({}, trialJobDetail));
+            // };
+            // console.trace('nni manager onTrialJobMetrics', trialJobDetail)
+            await this.requestTrialJobsStatus()
         } else {
             this.log.warning('NNIManager received non-existent trial job metrics:', metric);
         }

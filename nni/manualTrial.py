@@ -29,6 +29,7 @@ __all__ = [
     'manual_update_experiment',
 ]
 
+_KILL = 1
 trial_env_vars = _load_env_vars(_trial_env_var_names)
 
 _set_trial_start = {'type':'set_trial_start'}
@@ -74,6 +75,16 @@ def update_trial_env(env):
     os.environ.update(env)
     _update_trial_env_vars()
 
+def should_stop_trial(sequence_id):
+    
+    port = _exp.port
+    ip = _exp._nni_manager_ip
+
+    trial_kill_url = f'http://{ip}:{port}/trial-killed/manual-env/{sequence_id}'
+    channel = HttpChannel(trial_kill_url)
+    status = channel.receive()['status']
+
+    return status == _KILL
 
 def get_trial_env(sequence_id):
     '''
@@ -139,15 +150,16 @@ def manual_get_next_parameter(sequence_id:int) -> Parameters:
         A hyperparameter set sampled from search space.
     """
     assert _exp is not None, 'Should call set_experiment or update_experiment first'
+    global trialParameterQueue, trialIdQueue, trialChannelQueue
 
     if _exp != 'DEBUG':
-        global trialParameterQueue, trialIdQueue, trialChannelQueue
+        if trialParameterQueue.get(sequence_id, False):
+            return trialParameterQueue[sequence_id]['parameters']
+        
         env = get_trial_env(sequence_id)
         update_trial_env(env)
 
         ip = _exp._nni_manager_ip
-        # trial_channel_url =  trial_env_vars.NNI_TRIAL_COMMAND_CHANNEL
-        # trial_channel_url = trial_channel_url.replace('localhost', ip)
         trial_channel_url = env['NNI_TRIAL_COMMAND_CHANNEL'].replace('localhost', ip)
         trial_id = env['NNI_TRIAL_JOB_ID']
         
@@ -272,8 +284,10 @@ def manual_report_final_result(sequence_id: int, metric: TrialMetric | dict[str,
     
     trial_command_channel = trialChannelQueue.get(sequence_id) if _exp != 'DEBUG' else StandaloneTrialCommandChannel()
     runtime = time.time() - trialStartTimeQueue[sequence_id]
-    time.sleep(0.5 - runtime if 0.5 - runtime > 0 else 0)
+    time.sleep(0.2 - runtime if 0.2 - runtime > 0 else 0)
 
+    # for _ in range(2):
+    #     time.sleep(0.1)
     trial_command_channel.send_metric(
         parameter_id=params['parameter_id'] if params else None,
         trial_job_id=trialIdQueue[sequence_id],
@@ -281,6 +295,7 @@ def manual_report_final_result(sequence_id: int, metric: TrialMetric | dict[str,
         sequence=0,
         value=cast(TrialMetric, metric)
     )
+
     # fixme send one will report fail
     # trial_command_channel.send_metric(
     #     parameter_id=params['parameter_id'] if params else None,
@@ -289,15 +304,15 @@ def manual_report_final_result(sequence_id: int, metric: TrialMetric | dict[str,
     #     sequence=0,
     #     value=cast(TrialMetric, metric)
     # )
-    info_channel.send(_set_trial_stop)
+    # info_channel.send(_set_trial_stop)
 
     # time.sleep(0.1)
     # # Fixme: if report too fast, the trial may not be stopped and try to send again
-    data = info_channel.receive()
-    while data['trial_status'] != 'DONE':
-        info_channel.send(_set_trial_stop)
-        time.sleep(0.1)
-        data = info_channel.receive()
+    # data = info_channel.receive()
+    # while data['trial_status'] != 'DONE':
+    #     info_channel.send(_set_trial_stop)
+    #     time.sleep(0.1)
+    #     data = info_channel.receive()
 
     trialParameterQueue.pop(sequence_id)
     trialIdQueue.pop(sequence_id)

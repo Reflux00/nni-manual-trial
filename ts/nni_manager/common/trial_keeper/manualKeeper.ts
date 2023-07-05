@@ -36,8 +36,8 @@ import type { EnvironmentInfo } from 'common/training_service_v3';
 import { collectPlatformInfo } from './collect_platform_info';
 // import { TrialProcess, TrialProcessOptions } from './process';
 import { TaskSchedulerClient } from './task_scheduler_client';
-import { assert } from 'console';
-import { delay } from 'common/utils';
+// import { assert } from 'console';
+// import { delay } from 'common/utils';
 
 export declare namespace ManualTrialKeeper {
     export interface TrialOptions {
@@ -61,12 +61,13 @@ export class ManualTrialKeeper {
     private envInfo!: EnvironmentInfo;
     private channels: HttpChannelServer;
     private trial_info_channel: HttpChannelServer;
+    private killTrialChannel: KilledTrialHttpChannelServer;
     private dirs: Map<string, string> = new Map();
     private emitter: EventEmitter = new EventEmitter();
     private scheduler: TaskSchedulerClient;
     private log: Logger;
     private platform: string;
-    // private trials: Map<string, TrialProcess> = new Map();
+    private trials: Map<string, any> = new Map();
     private trialIdQueue: Map<string, string> = new Map();
     private gpuEnabled: boolean;
 
@@ -84,12 +85,17 @@ export class ManualTrialKeeper {
 
         this.channels = new HttpChannelServer(this.envId, `/env/${this.envId}`);
         this.channels.onReceive((trialId, command) => {
-            // delay(1000*0.2)
             this.emitter.emit('command', trialId, command);
-            if (command.type === 'metric'){
-                console.trace('receive merit and stop', command, trialId, Date.now(), 0);
-                this.emitter.emit('trial_stop', trialId, Date.now(), 0);
-            }
+            if (command.type === 'metric') {
+                let metric_data = JSON.parse(command.metric)
+                if (metric_data['type'] == 'FINAL') {
+                    // console.trace('receive merit and stop', command, trialId, metric_data);
+                    this.emitter.emit('trial_stop', trialId, Date.now(), 0);
+                    // this.channels.send()
+                    // delay(1000*0.5);
+                }
+            };
+
             if (command.type !== 'request_parameter' && command.type !== 'metric') {
                 this.log.warning(`Unexpected command from trial ${trialId}:`, command);
             }
@@ -97,24 +103,25 @@ export class ManualTrialKeeper {
 
         // http communication channel for trial start and stop
         this.trial_info_channel = new HttpChannelServer(this.envId, `/trial-info/${this.envId}`);
-        this.trial_info_channel.onReceive( (channelId, command) => {
-            this.log.trace('trial_info_channel receive command:', channelId, this.trialIdQueue.get(channelId), command)
+        this.trial_info_channel.onReceive((channelId, command) => {
+            this.log.debug('trial_info_channel receive command:', channelId, this.trialIdQueue.get(channelId), command)
             if (command.type === 'set_trial_start') {
-                // this.emitter.emit('set_trial_start', this.trialIdQueue.get(channelId), Date.now());
                 this.emitter.emit('trial_start', this.trialIdQueue.get(channelId), Date.now());
-                this.trial_info_channel.send(channelId, {'trial_status': 'RUNNING'});
-                
+                this.trial_info_channel.send(channelId, { 'trial_status': 'RUNNING' });
+                // this.emitter.emit('set_trial_start', this.trialIdQueue.get(channelId), Date.now());
+
             }
             else if (command.type === 'set_trial_stop') {
-                this.trial_info_channel.send(channelId, {'trial_status': 'DONE'});
-                // delay(1000*0.4)
-                // this.emitter.emit('set_trial_stop', this.trialIdQueue.get(channelId), Date.now(), command.exitCode);
                 this.emitter.emit('trial_stop', this.trialIdQueue.get(channelId), Date.now(), 0);
+                this.trial_info_channel.send(channelId, { 'trial_status': 'DONE' });
+                // delay(1000*0.8)
+                // this.emitter.emit('set_trial_stop', this.trialIdQueue.get(channelId), Date.now(), command.exitCode);
             }
-            else{
+            else {
                 this.log.warning(`Unexpected command from http trial ${this.trialIdQueue.get(channelId)}:`, command);
             }
         });
+        this.killTrialChannel = new KilledTrialHttpChannelServer(this.envId, `/trial-killed/${this.envId}`);
     }
 
     // TODO: support user configurable init command
@@ -124,7 +131,8 @@ export class ManualTrialKeeper {
         await Promise.all([
             this.scheduler.start(),
             this.channels.start(),
-            this.trial_info_channel.start()
+            this.trial_info_channel.start(),
+            this.killTrialChannel.start()
         ]);
 
         Object.assign(this.envInfo, await collectPlatformInfo(this.gpuEnabled));
@@ -140,13 +148,13 @@ export class ManualTrialKeeper {
         let promises: Promise<void>[] = [
             this.scheduler.shutdown(),
             this.channels.shutdown(),
-            this.trial_info_channel.shutdown()
+            this.trial_info_channel.shutdown(),
+            this.killTrialChannel.shutdown()
         ];
 
         // const trials = Array.from(this.trials.values());
         // promises = promises.concat(trials.map(trial => trial.kill()));
 
-        // this.emitter.removeAllListeners()
 
         await Promise.all(promises);
     }
@@ -157,7 +165,7 @@ export class ManualTrialKeeper {
 
     public async unpackDirectory(name: string, tarPath: string): Promise<void> {
         const extractDir = path.join(
-            globals.paths.experimentRoot, 
+            globals.paths.experimentRoot,
             'environments',
             (globals.args as any).environmentId,
             'upload',
@@ -169,10 +177,10 @@ export class ManualTrialKeeper {
         this.registerDirectory(name, extractDir);
     }
 
-    
+
     public async createTrial(options: ManualTrialKeeper.TrialOptions): Promise<boolean> {
         this.trialIdQueue.set(String(options.sequenceId ?? -1), options.id)
-        
+
         this.log.debug('HttpKeeper trialIdQueue:', this.trialIdQueue);
         const trialId = options.id;
 
@@ -198,7 +206,7 @@ export class ManualTrialKeeper {
         //     this.scheduler.release(trialId);  // TODO: fire and forget, handle exception?
         // });
 
-        const env: Record<string, string> = {...gpuEnv };
+        const env: Record<string, string> = { ...gpuEnv };
         env['NNI_CODE_DIR'] = this.dirs.get(options.codeDirectoryName)!;
         env['NNI_EXP_ID'] = globals.args.experimentId;
         env['NNI_OUTPUT_DIR'] = outputDir;
@@ -208,8 +216,8 @@ export class ManualTrialKeeper {
         env['NNI_TRIAL_HTTP_INFO_CHANNEL'] = this.trial_info_channel.getChannelUrl(String(options.sequenceId ?? -1));
         env['NNI_TRIAL_JOB_ID'] = trialId;
         env['NNI_TRIAL_SEQ_ID'] = String(options.sequenceId ?? -1);
-        
-        const command = {type: 'trial_info', env};
+
+        const command = { type: 'trial_info', env };
 
         this.trial_info_channel.send(String(options.sequenceId ?? -1), command);
         // this.trial_info_channel.send('stop', {});
@@ -232,7 +240,7 @@ export class ManualTrialKeeper {
 
         const success = true;
         if (success) {
-            // this.trials.set(trialId, trial);
+            this.trials.set(trialId, String(options.sequenceId ?? -1));
             return true;
         } else {
             return false;
@@ -240,17 +248,20 @@ export class ManualTrialKeeper {
     }
     public async stopTrial(trialId: string): Promise<void> {
         // await this.trials.get(trialId)!.kill();
-        await this.trialIdQueue.get(trialId);
+        // await this.trialIdQueue.get(trialId);
+        this.killTrialChannel.send(this.trials.get(trialId), {'status':1})
+        this.emitter.emit('trial_stop', trialId, Date.now(), 999);
+        // console.trace('Early Stop, ', trialId, this.trials.get(trialId));
     }
 
     public async sendCommand(trialId: string, command: Command): Promise<void> {
         this.channels.send(trialId, command);
     }
 
-    public print_trial_start_request_info(trialId: string, timestamp: number): void{
+    private print_trial_start_request_info(trialId: string, timestamp: number): void {
         console.debug('HttpKeeper received start:', trialId, timestamp)
     }
-    public print_trial_stop_request_info(trialId: string, timestamp: number, exitCode: number | null): void{
+    private print_trial_stop_request_info(trialId: string, timestamp: number, exitCode: number | null): void {
         console.debug('HttpKeeper received stop:', trialId, timestamp, exitCode)
     }
 
@@ -280,4 +291,96 @@ export class ManualTrialKeeper {
     public onEnvironmentUpdate(callback: (info: EnvironmentInfo) => void): void {
         this.emitter.on('env_update', callback);
     }
+}
+
+// ugly
+// new http server
+// import { EventEmitter } from 'events';
+
+import { Request, Response } from 'express';
+
+// import { Deferred } from 'common/deferred';
+// import globals from 'common/globals';
+// import { Logger, getLogger } from 'common/log';
+import type { CommandChannelServer } from 'common/command_channel/interface';
+
+// let timeoutMilliseconds = 1000;
+// const HttpRequestTimeout = 408;
+const HttpGone = 410;
+
+class KilledTrialHttpChannelServer implements CommandChannelServer {
+    private emitter: EventEmitter = new EventEmitter();
+    private log: Logger;
+    // the server can only send commands when the client requests, so it needs a queue
+    private killedTrialQueues: Map<string, Command> = new Map();
+    private path: string;
+    private serving: boolean = false;
+
+    constructor(name: string, urlPath: string) {
+        this.log = getLogger(`HttpChannelManager.${name}`);
+        this.path = urlPath;
+    }
+
+    public async start(): Promise<void> {
+        this.serving = true;
+        const channelPath = globals.rest.urlJoin(this.path, ':channel');
+        globals.rest.registerSyncHandler('GET', channelPath, this.handleGet.bind(this));
+        globals.rest.registerSyncHandler('PUT', channelPath, this.handlePut.bind(this));
+    }
+
+    public async shutdown(): Promise<void> {
+        this.serving = false;
+        // this.outgoingQueues.forEach(queue => { queue.clear(); });
+    }
+
+    public getChannelUrl(channelId: string, ip?: string): string {
+        return globals.rest.getFullUrl('http', ip ?? 'localhost', this.path, channelId);
+    }
+
+    public send(channelId: string, command: Command): void {
+        this.killedTrialQueues.set(channelId, command)
+    }
+
+    public onReceive(callback: (channelId: string, command: Command) => void): void {
+        this.emitter.on('receive', callback);
+    }
+
+    public onConnection(_callback: (channelId: string, channel: any) => void): void {
+        throw new Error('Not implemented');
+    }
+
+    private handleGet(request: Request, response: Response): void {
+
+        if (!this.serving) {
+            response.sendStatus(HttpGone);
+            return;
+        }
+
+        const channelId = request.params['channel'];
+        // this.log.debug('http handle get command', command)
+        
+        if (!this.killedTrialQueues.has(channelId)){
+            response.send({'status':-1})
+        }else{
+            const command = this.killedTrialQueues.get(channelId);
+            response.send(command);
+        }
+
+
+    }
+
+    private handlePut(request: Request, response: Response): void {
+        if (!this.serving) {
+            response.sendStatus(HttpGone);
+            return;
+        }
+
+        const channelId = request.params['channel'];
+        const command = request.body;
+        this.emitter.emit('receive', channelId, command);
+        this.log.debug('http handle put', channelId, command)
+
+        response.send();
+    }
+
 }

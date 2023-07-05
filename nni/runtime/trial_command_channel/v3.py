@@ -17,7 +17,7 @@ _logger = logging.getLogger(__name__)
 class TrialCommandChannelV3(TrialCommandChannel):
     def __init__(self, url: str):
         assert url.startswith('http://'), 'Only support HTTP command channel'  # TODO
-        _logger.info(f'Connect to trial command channel {url}')
+        # _logger.info(f'Connect to trial command channel {url}')
         self._channel: HttpChannel = HttpChannel(url)
 
     def receive_parameter(self) -> ParameterRecord | None:
