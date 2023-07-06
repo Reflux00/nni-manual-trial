@@ -193,7 +193,7 @@ def download_toolchain():
     import requests  # place it here so setup.py can install it before importing
 
     _print(f'Downloading node.js from {node_download_url}')
-    resp = requests.get(node_download_url)
+    resp = requests.get(node_download_url, proxies={'http':"http://127.0.0.1:1080", 'https':"http://127.0.0.1:1080"})
     resp.raise_for_status()
     _print('Extracting node.js')
     tarball = node_extractor(resp.content)

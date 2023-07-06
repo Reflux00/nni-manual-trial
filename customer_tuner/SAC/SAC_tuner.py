@@ -132,7 +132,7 @@ class Action_adapter_reverse(Action_adapter):
 
 class SACArguments(NamedTuple):
     gamma:float = 0.99
-    hid_shape:tuple[int, int] = (512, 512)
+    hid_shape:tuple[int, int] = (256, 256)
     a_lr:float = 3e-4
     c_lr:float = 3e-4
     batch_size:int = 64
